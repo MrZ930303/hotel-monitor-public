@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>酒店价格与房态监控看板（只读分享 · 上海）</title>
+<style>
+ *{box-sizing:border-box}
+ body{font-family:-apple-system,"Microsoft YaHei",sans-serif;margin:0;background:#f0f2f5;color:#1f2329}
+ header{background:#1f2329;color:#fff;padding:14px 22px;display:flex;align-items:center;gap:16px}
+ header h1{font-size:18px;margin:0}
+ header .meta{font-size:12px;color:#9aa0a6}
+ .controls{display:flex;gap:10px;align-items:center;margin-left:auto}
+ button{background:#2f6fed;color:#fff;border:0;border-radius:6px;padding:7px 14px;font-size:13px;cursor:pointer}
+ button:disabled{opacity:.5;cursor:default}
+ button.ghost{background:#3a4049}
+ .wrap{padding:18px;max-width:1280px;margin:0 auto}
+ /* 酒店切换器 */
+ .switcher{background:#fff;border-radius:10px;padding:14px 18px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+ .switcher .lbl{font-size:13px;color:#8a9099;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+ .switcher .lbl b{color:#1f2329;font-size:14px}
+ .pills{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+ .pill-group{display:flex;flex-direction:column;gap:6px;padding:8px 12px;border:1px dashed #d0d4da;border-radius:12px;background:#fafbfc}
+ .pill-city{font-size:11px;color:#8a9099;letter-spacing:.5px}
+ .pill-group .pills-inner{display:flex;gap:8px;flex-wrap:wrap}
+ .pill.target{border-width:2px;border-color:#fa8c16;font-weight:600;color:#1f2329;background:#fff8f0}
+ .pill.target.active{background:#fa8c16;border-color:#fa8c16;color:#fff}
+ .pill{border:1.5px solid #d0d4da;background:#fff;color:#5a6069;border-radius:20px;padding:8px 16px;font-size:13px;cursor:pointer;transition:.15s}
+ .pill:hover{border-color:#2f6fed;color:#2f6fed}
+ .pill.active{background:#2f6fed;border-color:#2f6fed;color:#fff;font-weight:600}
+ .pill .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#d0d4da}
+ .pill.target .dot{background:#fa8c16}
+ .pill.active .dot{background:#fff}
+ .pill .rt{font-size:11px;opacity:.75}
+ /* KPI */
+ .cards{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+ .card{background:#fff;border-radius:10px;padding:14px 18px;flex:1;min-width:150px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+ .card .k{font-size:12px;color:#8a9099}
+ .card .v{font-size:24px;font-weight:600;margin-top:4px}
+ .card .v small{font-size:13px;color:#8a9099;font-weight:400}
+ /* 面板 */
+ .panel{background:#fff;border-radius:10px;padding:16px;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+ .panel h2{font-size:15px;margin:0 0 12px}
+ .row{display:flex;gap:18px;flex-wrap:wrap}
+ .row .panel{flex:1;min-width:340px}
+ .empty{color:#9aa0a6;padding:26px;text-align:center}
+ /* 悬停提示：把常驻说明收进 ⓘ，鼠标移上去才展开。
+    纯 CSS 实现，不引入任何依赖；气泡定位相对 ⓘ 自身，默认左对齐、
+    靠近右边界时用 .right 改为右对齐，避免撑破面板。 */
+ .tip{position:relative;display:inline-flex;align-items:center;justify-content:center;
+   width:15px;height:15px;margin-left:6px;border-radius:50%;background:#e8ebf0;color:#7a828c;
+   font-size:10px;font-weight:700;font-style:normal;line-height:1;cursor:help;
+   vertical-align:middle;transition:.15s;flex-shrink:0;user-select:none}
+ .tip:hover{background:#2f6fed;color:#fff}
+ .tip.warn{background:#ffe7ba;color:#d46b08}
+ .tip.warn:hover{background:#fa8c16;color:#fff}
+ /* 气泡本体定义在 .tipbox 这个「通用类」上，而不是 `.tip .tipbox` ——
+    否则挂在 .src-tag（文字标签）下的气泡拿不到样式，会变成常驻可见的裸文本。
+    挂在谁下面只决定触发方式与定位，外观一律共用。 */
+ .tipbox{position:absolute;z-index:60;left:-6px;top:150%;display:none;
+   width:252px;padding:9px 11px;background:#1f2329;color:#fff;font-size:12px;line-height:1.7;
+   font-weight:400;text-align:left;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.24);
+   white-space:normal;cursor:default}
+ .tipbox::before{content:'';position:absolute;left:11px;top:-5px;width:0;height:0;
+   border:5px solid transparent;border-top:0;border-bottom-color:#1f2329}
+ .tip:hover>.tipbox,.src-tag:hover>.tipbox{display:block}
+ .tip.right>.tipbox{left:auto;right:-6px}
+ .tip.right>.tipbox::before{left:auto;right:11px}
+ /* 已有的文字标签也能挂气泡：hover 标签本体即展开说明（不额外占位） */
+ .src-tag{position:relative;display:inline-block;padding:1px 6px;border-radius:9px;
+   font-size:11px;cursor:help;white-space:nowrap}
+ .src-tag>.tipbox{left:50%;transform:translateX(-50%)}
+ .src-tag>.tipbox::before{left:50%;margin-left:-5px}
+ /* 表格里的标签靠右，气泡改为右对齐，避免撑出面板 */
+ #status .src-tag>.tipbox{left:auto;right:-6px;transform:none}
+ #status .src-tag>.tipbox::before{left:auto;right:11px;margin-left:0}
+ .tipbox b{color:#ffd591;font-weight:600}
+ .tipbox em{color:#91d5ff;font-style:normal}
+ .legend{display:flex;gap:18px;justify-content:center;margin-top:6px;font-size:12px;color:#5a6069;flex-wrap:wrap}
+ .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}
+ .legend span{display:inline-flex;align-items:center}
+ /* 价格趋势：每家监控主体一张独立小图，并排；窄屏自动折成上下 */
+ .trend-grid{display:flex;gap:16px;flex-wrap:wrap}
+ .trend-cell{flex:1;min-width:330px;padding:10px 12px 4px;border:1px solid #eef0f3;border-radius:8px;cursor:pointer;transition:.15s}
+ .trend-cell:hover{border-color:#adc6ff;box-shadow:0 2px 8px rgba(47,111,237,.08)}
+ .trend-cell.cur{border-color:#2f6fed;background:#fafcff}
+ .trend-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:2px;font-size:13px}
+ .trend-head .tn{font-weight:600;color:#5a6069;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .trend-cell.cur .trend-head .tn{color:#2f6fed}
+ .trend-head .tp{font-size:17px;font-weight:700;color:#d4380d;white-space:nowrap;flex-shrink:0}
+ .trend-head .tp small{font-size:11px;color:#8a9099;font-weight:400;margin-left:5px}
+/* 价格趋势图例：说明「连线 / 竖条 / 空心点」各是什么（曾有使用者问「这个柱形表示什么」） */
+.trend-legend{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:6px 0 2px;font-size:11px;color:#8a9099}
+.trend-legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.trend-legend i{display:inline-block;flex:none}
+.trend-legend .lg-line{width:16px;height:0;border-top:2px solid #2f6fed;border-radius:2px}
+.trend-legend .lg-bar{width:7px;height:14px;border-radius:4px;background:#2f6fed;opacity:.16}
+.trend-legend .lg-ring{width:9px;height:9px;border-radius:50%;background:#fff;border:2.2px solid #2f6fed}
+/* ---- 出租率上界 与 预估营业额 ---- */
+.so-kpi{display:flex;gap:10px;flex-wrap:wrap;margin:2px 0 12px}
+.so-kpi .k{border:1px solid #eef0f3;border-radius:8px;padding:7px 11px;min-width:104px}
+.so-kpi .k .v{font-size:17px;font-weight:600;color:#1f2329;line-height:1.25;white-space:nowrap}
+/* 标签允许换行：加上「预估日营业额」后最长标签在窄卡片里会溢出（曾用 nowrap 撑出面板） */
+.so-kpi .k .l{font-size:11px;color:#8a9099;margin-top:1px}
+.so-kpi .k.hi{border-color:#ffd591;background:#fffbf5}
+.so-kpi .k.hi .v{color:#d46b08}
+.so-kpi .k.rev{border-color:#adc6ff;background:#f5f9ff}
+.so-kpi .k.rev .v{color:#0958d9}
+/* 2026-09-16：明细块（元信息行 / 估算口径行 / 房型数据表 / 今日事件列表）已按用户要求整块移除，
+   同日又撤掉「PMS 实测出租率」卡（该值是 2026-09-13 21:59 录入的陈旧数据，
+   却被当「今日实测」展示且界面无任何时间戳 ⇒ 先撤，等重新录入后再议）。
+   对应样式一并清掉（不留死 CSS）。
+   原样备份 + 恢复说明见 hotel_monitor/_removed_sellout_detail.txt 与 _removed_pms_card.txt。
+   对应的表格、事件标签、余量链条等几组样式也一并清掉（不留死 CSS）。
+   原样备份 + 四步恢复说明见 hotel_monitor/_removed_sellout_detail.txt —— 要加回先读那个文件。
+   ⇒ 源码里除本注释外**不该再有**这几个类名，验收脚本用这一点判「已移除」，
+     所以恢复时要连这条注释一起改掉。 */
+ select{padding:6px 10px;border-radius:6px;border:1px solid #d0d4da;font-size:13px}
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ th,td{border:1px solid #eef0f3;padding:7px 9px;text-align:center}
+ th{background:#f7f8fa;color:#5a6069}
+ .full{color:#d4380d;font-weight:600} .open{color:#389e0d}
+ .tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px}
+ .tag.t{background:#fff1f0;color:#d4380d} .tag.c{background:#f0f5ff;color:#2f6fed}
+/* 满房状态总表：主体酒店整行淡橙高亮 + 左侧橙色标线 + 店名加重，
+   与酒店切换器 / 卡片共用同一套「主体=橙、对比=蓝」语义，便于一眼区分。 */
+#status tbody tr.tgt td{background:#fff8f0;border-color:#ffe3c2}
+#status tbody tr.tgt td:first-child{font-weight:600;color:#d46b08;box-shadow:inset 3px 0 0 #fa8c16}
+#status tbody tr.tgt .tag.t{font-weight:600}
+ footer{text-align:center;color:#9aa0a6;font-size:12px;padding:8px}
+/* 房态图形化 */
+.room-total{display:flex;align-items:center;gap:14px;margin-bottom:16px;padding:14px;background:#f7f9fc;border-radius:8px}
+.room-total .big{font-size:26px;font-weight:600}
+.bar-wrap{flex:1;background:#eef0f3;border-radius:8px;height:18px;overflow:hidden;position:relative}
+.bar-fill{height:100%;border-radius:8px;transition:width .4s}
+.bar-fill.booked{background:#fa8c16}
+.bar-fill.full{background:#d4380d}
+.room-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f2f3f5}
+/* 房型名列固定宽度 + 省略号：房型名长的（如「高级双床房 连住4小时」
+   「高级双床房（智能投屏+记忆深睡枕） 连住4小时」）否则会折成两行，行高不齐。 */
+.room-row .rn{width:132px;text-align:left;font-size:13px;flex-shrink:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.room-row .nums{width:70px;text-align:right;font-size:12px;color:#5a6069;flex-shrink:0}
+.room-row .pr{width:70px;text-align:right;font-size:12px;color:#8a9099;flex-shrink:0}
+.room-row .bar{flex:1;background:#eef0f3;border-radius:6px;height:12px;overflow:hidden}
+.room-row .bar .f{height:100%;background:#2f6fed;border-radius:6px}
+.room-row .bar .f.fullc{background:#d4380d}
+ /* 原「评分与评价」样式已随面板移除（2026-09-14）：
+   .rating-list / .rating-row(+.pn/.score/.cnt) / .stars(+.fill) /
+   .delta(+.up/.down) / .alert(+.low) / .star-wrap 共 11 条，均只服务评分面板。
+   备份见 hotel_monitor/_removed_rating_panel.txt 的「2. CSS」段。
+   注意 .tip / .tipbox / .src-tag 是通用组件，仍被价格趋势与满房总表使用，不要一起删。 */
+/* 加密分享：密码弹窗（本地看板为明文 JSON，弹窗永不触发，无副作用） */
+#passModal{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:9999;display:none;align-items:center;justify-content:center}
+#passModal .box{background:#fff;border-radius:14px;padding:24px 22px;width:330px;max-width:92vw;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+#passModal h3{margin:0 0 6px;font-size:16px;color:#1f2329}
+#passModal p{margin:0 0 14px;font-size:12px;line-height:1.5;color:#8a9099}
+#passModal input{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid #d0d4da;border-radius:8px;font-size:14px;outline:none}
+#passModal input:focus{border-color:#2f6fed}
+#passModal .row{display:flex;gap:10px;margin-top:16px}
+#passModal button{flex:1;padding:10px;border:none;border-radius:8px;font-size:14px;cursor:pointer}
+#passModal .ok{background:#2f6fed;color:#fff}
+#passModal .cancel{background:#f2f3f5;color:#555}
+#passModal .err{color:#e23b3b;font-size:12px;margin-top:10px;min-height:14px}
+#passModal .remember{display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:12px;line-height:1.45;color:#5b6270;cursor:pointer;user-select:none}
+#passModal .remember input{width:15px;height:15px;margin:0;flex:none;accent-color:#2f6fed;cursor:pointer}
+#passModal .remember i{display:block;font-style:normal;color:#a0a6b0;font-size:11px;margin-top:2px}
+#forgetWrap a{color:#2f6fed;text-decoration:none;border-bottom:1px dashed #b9ccf3}
+/* 移动端适配（≤768px）：仅改窄屏布局，桌面版完全不变 */
+@media (max-width:768px){
+  header{flex-wrap:wrap;align-items:flex-start;padding:12px 14px;gap:6px 12px}
+  header h1{font-size:16px}
+  header .meta{font-size:11px;flex-basis:100%;order:2}
+  .controls{width:100%;margin-left:0;flex-wrap:wrap;gap:8px;order:3}
+  .controls select{flex:1 1 auto;min-height:40px;font-size:14px}
+  .controls button{flex:1 1 auto;min-height:42px;font-size:14px;padding:9px 12px}
+  .wrap{padding:10px}
+  .switcher{padding:12px 14px;margin-bottom:12px}
+  .switcher .lbl{font-size:12px}
+  .cards{margin-bottom:12px}
+  .card{flex:1 1 46%;min-width:0;padding:12px 14px}
+  .card .v{font-size:20px}
+  .panel{padding:12px;margin-bottom:12px}
+  .row .panel{min-width:0}
+  .trend-grid{gap:10px}
+  .trend-cell{min-width:0;flex:1 1 100%}
+  /* 满房状态总表列多，手机上横向滚动，避免撑破页面 */
+  #status{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #status th,#status td{white-space:nowrap;font-size:11px;padding:6px 7px}
+  /* 房态行（房型名 / 余量 / 价格）：窄屏必须让三列可收缩，否则固定宽度合计超出行宽 ——
+     .rn 104 + gap 10 + .nums 180（JS 内联宽）+ gap 10 + .pr 70 = 374px > 可用 346px，
+     价格被挤出卡片右缘、贴到屏幕边（实测：price_right 396 = 视口右缘，卡片右缘 380，
+     差 -16px；行 overflow 28px，且 .pr 的内联 margin-right:auto 在零剩余空间下失效）。
+     改法：房型名改可收缩（长名仍省略号）；余量列取消内联 180px、按内容宽；
+     价格列取消内联 margin-right:auto，并给行留右侧内边距，避免贴边。 */
+  .room-row{gap:8px;padding-right:2px}
+  .room-row .rn{width:auto;flex:1 1 auto;min-width:0}
+  .room-row .nums{width:auto !important;flex:0 1 auto;min-width:0;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .room-row .pr{width:auto !important;flex:0 0 auto;margin-right:0 !important;
+    white-space:nowrap}
+  .room-total{padding:12px}
+  .room-total .big{font-size:22px}
+  footer{font-size:11px}
+  /* 密码弹窗在手机上更紧凑 */
+  #passModal .box{width:auto;padding:20px 18px}
+}
+  /* 周边热点事项面板 */
+  #eventsWrap .ev-group{margin:0 0 14px}
+  #eventsWrap .ev-group h3{font-size:14px;margin:0 0 6px;color:#1f2329;
+    border-left:3px solid #2f6fed;padding-left:8px}
+  #eventsWrap .ev-list{list-style:none;margin:0;padding:0}
+  #eventsWrap .ev-list li{font-size:13px;line-height:1.55;padding:6px 8px;
+    border-bottom:1px dashed #eceef1;color:#3a3f47}
+  #eventsWrap .ev-list li:last-child{border-bottom:0}
+  #eventsWrap .ev-date{display:inline-block;min-width:96px;color:#d4380d;font-weight:600;
+    font-variant-numeric:tabular-nums}
+  #eventsWrap .ev-title{font-weight:600;color:#1f2329}
+  #eventsWrap .ev-region{display:inline-block;font-size:11px;padding:1px 6px;border-radius:8px;
+    margin-left:6px;vertical-align:middle}
+  #eventsWrap .ev-region.near{background:#e6f4ea;color:#1a7f37;border:1px solid #b7e1c4}
+  #eventsWrap .ev-region.far{background:#eef2f7;color:#5a6472;border:1px solid #d6dde6}
+  #eventsWrap .ev-rnote{color:#8a9099;font-size:12px}
+  #eventsWrap .ev-loc{display:block;color:#5a6472;font-size:12px;margin-top:2px}
+  #eventsWrap .ev-src{display:block;color:#9aa0a6;font-size:11px;margin-top:2px}
+  #eventsWrap .ev-src a{color:#2f6fed;text-decoration:none}
+  #eventsWrap .ev-src a:hover{text-decoration:underline}
+  /* 手机端：日期列收窄，避免长日期（如「9月10-11日 / 16-17日」）换行难看 */
+  @media (max-width:768px){
+    #eventsWrap .ev-list li{font-size:12.5px;padding:7px 4px}
+    #eventsWrap .ev-date{min-width:78px;font-size:12px}
+  }
+  #eventsWrap .ev-count{color:#8a9099;font-size:12px;font-weight:400;margin-left:8px}
+  #eventsWrap .ev-past{display:inline-block;font-size:11px;padding:1px 6px;border-radius:8px;
+    margin-left:6px;background:#f2f3f5;color:#9aa0a6;border:1px solid #e5e6eb;vertical-align:middle}
+  /* 「进行中」= 今天已开始且未结束（绿），与「已结束（灰）」成对；窗口内不会出现已结束 */
+  #eventsWrap .ev-live{display:inline-block;font-size:11px;padding:1px 6px;border-radius:8px;
+    margin-left:6px;background:#f6ffed;color:#389e0d;border:1px solid #b7eb8f;vertical-align:middle}
+  #eventsWrap .ev-list li.is-past{opacity:.58}
+  #eventsWrap .ev-list li.is-past .ev-date{color:#9aa0a6}
+  /* 售完面板：手机端 KPI 两列铺开；SVG 用 viewBox 等比缩放，横向不溢出 */
+  @media (max-width:768px){
+    .so-kpi{gap:8px}
+    .so-kpi .k{flex:1 1 45%;min-width:0;padding:6px 9px}
+    .so-kpi .k .v{font-size:15px}
+  }
+#runBtn{display:none!important}
+</style></head>
+<body>
+<header>
+  <h1>🏨 酒店价格与房态监控看板</h1>
+  <span class="meta" id="meta"></span>
+  <div class="controls">
+    <label style="font-size:12px;color:#9aa0a6">入住日期</label>
+    <select id="datePick" style="padding:6px 10px;border-radius:6px;border:1px solid #d0d4da;font-size:13px;background:#fff;color:#1f2329" onchange="changeDate()"></select>
+    <button id="runBtn" onclick="runOnce()">采集一次</button>
+    <button class="ghost" onclick="refresh()">刷新</button>
+  </div>
+</header>
+<div class="wrap">
+
+  <!-- 原顶部「数据来源（真实模式 live）」说明条已移除。
+       其四项说明在各面板内已有更精确的对应标注，属于重复信息：
+       评分→评分面板每平台的「实测 / 锚点 / 估算」标签；
+       房价→满房总表「实时起价」列与房态面板的「实时起价」；
+       房态→满房总表状态列 + 房态面板顶部的「本入住日未实测」横幅。
+       注：第四项「真实房量」原本指向房态面板的「PMS 录入真实房量」块，
+       该块已于 2026-09-14 按用户要求移出页面（备份见 _removed_pms_banner.txt），
+       现房量的唯一展示位是满房总表的「总间数」列（来源：config 核实值，非实时可售数）。 -->
+
+  <div class="switcher" id="switcherBox">
+    <div class="lbl"><b>选择酒店</b><span id="switchHint"></span><span id="srcTip"></span></div>
+    <div class="pills" id="pills"></div>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <!-- 原「各平台最新价格对比」柱状图已移除：
+       锚点价弃用后房价只剩携程一个平台有实时数据（其余平台为纯评分记录），
+       单平台单柱状图不构成「对比」，信息量为零。实时起价已在满房状态总表与房态监控面板展示。 -->
+  <div class="panel"><h2>价格趋势<span id="trendTip"></span></h2>
+    <div id="trendWrap"></div></div>
+
+  <div class="panel"><h2 id="roomTitle">房态监控</h2>
+    <div id="roomWrap"></div></div>
+
+  <!-- 售完时刻 与 出租率上界：数据源是**今日**每日快照（逐房型余量时间序列）。
+       ⚠️ 本面板的所有数字都是「上界」或「区间」，口径必须原样透出到标题旁的 ⓘ，
+       不许只说结论不说边界 —— 携程 C 端根本没有销量字段。 -->
+  <div class="panel"><h2 id="soTitle">出租率上界与预估营业额</h2>
+    <div id="soWrap"></div></div>
+
+  <!-- 原「今日评价汇总」面板已移除：
+       其数据源是 price 记录里按需求热度生成的演示值（today_new_reviews / today_bad_reviews），
+       非真实抓取，实测恒为 0/0 并显示「样本不足」；主体店以外还普遍缺点评数。
+       在无法拿到真实「今日新增/差评」的情况下，这个面板只会输出无意义数字，故整块删除。 -->
+
+  <!-- 原「各平台评分监控」面板已移除（2026-09-14，用户要求先移出页面、后续按需加回）。
+       只移除了前端展示层：后端 rating_by_hotel_platform / score_series / score_platforms
+       三个数据项与 delta 环比、alert 掉分预警的计算逻辑全部保留，API 仍在下发。
+       完整的前端代码（HTML + CSS + JS）备份在 hotel_monitor/_removed_rating_panel.txt，
+       恢复步骤见该文件头部说明。 -->
+
+  <div class="panel"><h2>满房状态总表<em class="tip">i<span class="tipbox">各酒店 × 平台一览。<br>「状态」优先反映<b>所选入住日</b>的房态实测结果：<b>未实测</b> 表示该入住日没有实测数据（不会拿别的日期的数据顶替）；<b>有售卖限制</b> 指可订但受限（如 2 晚起订），与真满房区分。<br>整行<b>橙色高亮</b>的是监控主体酒店，白底为对标酒店（按城市聚拢、主体优先）。</span></em></h2>
+    <table id="status"><thead><tr>
+      <th>酒店</th><th>城市</th><th>类型</th><th>平台</th><th>实时起价</th>
+      <th>总间数<em class="tip right">i<span class="tipbox">PMS 录入 / 公开资料核实的房间总数，不是实时可售数</span></em></th>
+      <th>可订房型<em class="tip right">i<span class="tipbox"><b>过夜口径</b>：可订房型数 / 全部房型数。<br>钟点房（「连住N小时」）不属过夜库存，另以灰字标注、不计入此比值。</span></em></th>
+      <th>可见房间数<em class="tip right">i<span class="tipbox"><b>下限估计</b>：有「仅剩N间」标签的按 N 计；无标签表示余量充足，按 ≥6 间计（<b>不是 0</b>）。<br>携程只公开「仅剩N间」这一个信号，不提供真实库存。</span></em></th>
+      <th>状态</th>
+      <th>房态实测时间<em class="tip right">i<span class="tipbox">该行房态数据的实际采集时间。<br>与所选入住日不一致时，「状态」列会显示「未实测」。</span></em></th>
+    </tr></thead><tbody></tbody></table></div>
+
+  <div class="panel"><h2 id="eventsTitle">周边热点事项</h2>
+    <div id="eventsWrap"></div></div>
+
+  <footer>数据源：<span id="src"></span> ｜ 每 <span id="ar"></span> 分钟自动采集刷新<span id="forgetWrap" style="display:none"> ｜ <a id="forgetBtn" href="javascript:void(0)">忘记本机密码</a></span></footer>
+</div>
+<!-- 加密分享版密码弹窗：本地看板/未加密分享是明文 JSON，此弹窗永不显示 -->
+<div id="passModal">
+  <div class="box">
+    <h3>查看数据需要密码</h3>
+    <p>本页面数据已加密，请输入授权查看密码。密码仅在本机浏览器中用于解密，不会上传。</p>
+    <input id="passInput" type="password" autocomplete="off" placeholder="查看密码">
+    <label class="remember"><input id="passRemember" type="checkbox" checked>
+      <span>记住密码，30 天内本机免重复输入
+        <i>只写在这台设备的浏览器里；换密码后自动失效。共用设备请取消勾选。</i></span></label>
+    <div class="row">
+      <button id="passOk" class="ok">确定</button>
+      <button id="passCancel" class="cancel">取消</button>
+    </div>
+    <div id="passErr" class="err"></div>
+  </div>
+</div>
+<script>
+let DATA = null;
+const COLORS = ['#2f6fed','#fa8c16','#52c41a','#eb2f96','#13c2c2'];
+const PLAT_CN = {ctrip:'携程',meituan:'美团',rujia:'如家'};
+let curIdx = 0;
+
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtTime(t){ return String(t).replace('T',' '); }
+function hhmm(t){ var s=String(t); return s.length>=16 ? s.slice(11,16) : s; }
+function cn(p){ return PLAT_CN[p] || p; }
+/* 悬停说明：页面上的口径解释、数据质量提示一律收进这个小 ⓘ，
+   默认不占版面，鼠标移上去才展开气泡。cls 传 'warn' 表示需要留意的提示，
+   传 'right' 表示靠近右边界、气泡改为右对齐。 */
+function tip(html, cls){
+  return '<span class="tip' + (cls ? ' ' + cls : '') + '">i'
+       + '<span class="tipbox">' + html + '</span></span>';
+}
+
+/* ---------- 酒店切换器 ----------
+   按城市分组，主体酒店排在该城市首位、对比酒店紧随其后，便于横向对标；
+   主体用橙色加粗边框重点标注。curIdx 始终是 DATA.hotels 的真实下标。 */
+function hotelOrder(){
+  if(DATA._order && DATA._order.length === DATA.hotels.length) return DATA._order;
+  var idx = DATA.hotels.map(function(h, i){ return i; });
+  idx.sort(function(a, b){
+    var A = DATA.hotels[a], B = DATA.hotels[b];
+    if(A.city !== B.city) return A.city < B.city ? -1 : 1;
+    if(A.is_target !== B.is_target) return A.is_target ? -1 : 1;
+    return 0;
+  });
+  DATA._order = idx;
+  return idx;
+}
+function drawSwitcher(){
+  var el = document.getElementById('pills');
+  var order = hotelOrder();
+  var html = '', lastCity = null, opened = false;
+  order.forEach(function(i){
+    var h = DATA.hotels[i];
+    if(h.city !== lastCity){
+      if(opened) html += '</div></div>';
+      html += '<div class="pill-group"><div class="pill-city">' + esc(h.city) +
+              (h.is_target ? ' · 主体组' : ' · 对比组') + '</div><div class="pills-inner">';
+      lastCity = h.city; opened = true;
+    }
+    var cls = 'pill' + (h.is_target ? ' target' : '') + (i === curIdx ? ' active' : '');
+    html += '<button class="' + cls + '" onclick="selHotel(' + i + ')">' +
+      '<span class="dot"></span>' + esc(h.name) +
+      '<span class="rt">' + (h.is_target ? ' · 主体' : ' · 对比') + '</span></button>';
+  });
+  if(opened) html += '</div></div>';
+  el.innerHTML = html;
+}
+function selHotel(i){
+  curIdx = i;
+  // 价格趋势图也要重绘：每张图的边框高亮跟随当前酒店
+  drawSwitcher(); drawTrend(); drawRoom(); drawSellout(); drawCards(); drawEvents(); drawSrcLine();
+}
+function currentHotel(){
+  return DATA.hotels[curIdx] || DATA.hotels[0];
+}
+function drawSrcLine(){
+  var h = currentHotel();
+  var el = document.getElementById('srcTip');
+  if(!el) return;
+  // 来源 URL 与轮播说明收进悬停提示：常驻一条长链接会把切换器挤得很乱
+  var parts = [];
+  if(h.source){
+    parts.push('<b>数据来源</b><br>' + esc(h.source));
+  } else {
+    parts.push('<b>⚠ 该酒店暂无真实来源</b><br>当前展示为演示 / 估算数据，仅供参考。');
+  }
+  parts.push('<b>轮播</b>：每 ' + DATA.auto_switch_sec + ' 秒自动切换到下一家，也可直接点选。');
+  el.innerHTML = tip(parts.join('<br><br>'), h.source ? '' : 'warn');
+}
+
+/* ---------- KPI ---------- */
+function drawCards(){
+  var k = DATA.kpi;
+  var h = currentHotel();
+  var room = DATA.room_by_hotel[h.id] || {total:0,booked:0,is_full:false};
+  // 均价 / 区间口径：优先用「房型级真实价」统计（n 个过夜房型的均价与最低最高价）。
+  // 为什么不能直接用 hotel_metrics：live_rooms 模式下它退化为**酒店起价**，
+  // avg=min=max 恒成立（实测 6/6 家），「均价」「价格区间」都是假的。
+  // 取不到房型价时（登录态失效 / 该日未实测）才回退到 hotel_metrics，并标 honestly。
+  var ps = (DATA.hotel_price_stats || {})[h.id];
+  var m = DATA.hotel_metrics[h.id] || {avg:null,min:null,max:null};
+  var TIP_ROOMAVG = '<b>房型均价</b>：该店 @N@ 个过夜房型价格的平均值（钟点房不计），'
+      + '非酒店起价。<br>价格来自携程登录态实测的房型最低价，登录失效时回退为起价口径。';
+  var TIP_RANGE = '<b>房型价格区间</b>：最低 / 最高的过夜房型价。<br>'
+      + '当前只有携程一个平台有实时房价，标题不再写「跨平台」。';
+  var avg, mn, mx, avgLbl, rngLbl;
+  if(ps){
+    avg = ps.avg; mn = ps.min; mx = ps.max;
+    avgLbl = '当前酒店均价（房型）';
+    rngLbl = '价格区间（房型）';
+    TIP_ROOMAVG = TIP_ROOMAVG.replace('@N@', ps.n);
+  }else{
+    avg = m.avg; mn = m.min; mx = m.max;
+    avgLbl = '当前酒店均价（起价）';
+    rngLbl = '价格区间（起价）';
+  }
+  var avgTxt = (avg != null) ? avg : '—';
+  var mnTxt = (mn != null) ? mn : '—';
+  var mxTxt = (mx != null) ? mx : '—';
+  // 房态未实测（所选入住日没有实测数据）时不能报「有房」——那等于把「没数据」说成「有房可卖」
+  var loS = (DATA.leftover_stale_by_hotel || {})[h.id];
+  var loOk = (DATA.leftover_by_hotel || {})[h.id];
+  var fullTxt = (!loOk && loS) ? '未实测' : (room.is_full ? '满房' : '有房');
+  var items = [
+    [avgLbl + tip(TIP_ROOMAVG), avgTxt + ' <small>CNY</small>'],
+    [rngLbl + tip(TIP_RANGE), mnTxt + ' / ' + mxTxt + ' <small>CNY</small>'],
+    ['当前酒店满房', fullTxt],
+    ['主体满房数', k.target_full_count + ' / ' + k.target_count + ' <small>家</small>'],
+    ['入住日期', k.check_in_date],
+  ];
+  document.getElementById('cards').innerHTML = items.map(function(it){
+    return '<div class="card"><div class="k">' + it[0] + '</div><div class="v">' + it[1] + '</div></div>';
+  }).join('');
+}
+
+/* ---------- 价格趋势：本周（周一~周日）按天，每个监控主体一张独立小图 ----------
+   口径（2026-09-16 按用户要求修改：「显示选定日期本这周的价格趋势」）：
+   - X 轴 = **选定入住日期所在周**（周一~周日，项目约定周一起算），
+     不再是从前的「当天采集轮次」轴（几十分钟一个点，只反映当天的调价）。
+   - 一天一个点 = 该日**最后一轮**采集的起价（当日收盘语义）；
+     浅色竖条 = 该日**波动区间**（当日最低~最高），一眼看出当天是否剧烈调价。
+   - 未采集 / 未来（本周后面几天）**不画点、不连线** —— 不留假数据。
+     注意这不是「前向填充」：跨天不能填，填了就是把昨天的价格冒充成今天。
+   - 数据来自后端 trend_week（用全量记录，不受入住日过滤影响）；切换入住日会重建。
+   为什么仍然每家一张图：两家价格量级差得远（富阳 ~150、嘉定 ~250），
+   共用一根 Y 轴会把低价那条压成直线。 */
+function drawTrend(){
+  var el = document.getElementById('trendWrap');
+  var tipEl = document.getElementById('trendTip');
+  var tw = DATA.trend_week || {};
+  var days = tw.days || [];
+  var tips = ['X 轴 = <b>选定入住日期所在周</b>（周一~周日，项目约定周一起算），一天一个点。'
+            + '<br>点 = 该日<b>最后一轮</b>采集的起价；浅色竖条 = 该日<b>波动区间</b>（最低~最高）。'
+            + '<br>没有采集的日子不画点、不连线（不留假数据）。'];
+  var tipWarn = false;
+
+  // 按切换器顺序排列，保证图序与酒店列表一致
+  var series = [];
+  hotelOrder().forEach(function(i){
+    var hh = DATA.hotels[i];
+    var s = (tw.series || {})[hh.id];
+    if(s) series.push({hid: hh.id, idx: i, name: hh.name, points: s.points || []});
+  });
+  var anyN = 0;
+  series.forEach(function(s){
+    s.points.forEach(function(p){ if(p.price != null) anyN++; });
+  });
+  if(!series.length || !days.length || anyN === 0){
+    el.innerHTML = '<div class="empty">本周暂无价格数据</div>';
+    if(tipEl) tipEl.innerHTML = tip(tips.join('<br><br>'));
+    return;
+  }
+
+  var W = 560, H = 236, padL = 46, padR = 14, padT = 14, padB = 46;
+  var n = days.length;
+  var xIdx = {};
+  days.forEach(function(d, i){ xIdx[d.date] = i; });
+  // 7 天等距铺满宽度：用「序号」而不是真实时间比例，
+  // 否则同周内相邻两天会被拉成不同间距、看着像数据缺失。
+  function Xf(i){ var w = W - padL - padR; return n <= 1 ? padL + w/2 : padL + w * i/(n-1); }
+
+  var cells = series.map(function(s){
+    // 两图统一线色：每张图已是独立一店、头部有店名，再上不同颜色会与
+    // 「主体=橙 / 对比=蓝」这套既有语义混淆。当前酒店靠卡片边框高亮区分。
+    var color = '#2f6fed';
+    var cur = (s.idx === curIdx);
+    var pts = s.points.filter(function(p){ return p.price != null; });
+
+    // 纵轴各自自适应。值域里要把「当日波动区间」一起算进去，
+    // 否则波动竖条会画出图外；常量值时不能只 ±1 撑开（刻度会四舍五入成同一个数）。
+    var vals = [];
+    pts.forEach(function(p){
+      vals.push(p.price);
+      if(p.min != null) vals.push(p.min);
+      if(p.max != null) vals.push(p.max);
+    });
+    var minP = Math.min.apply(null, vals), maxP = Math.max.apply(null, vals);
+    var span = (maxP - minP) || 0;
+    if(span === 0) span = Math.max(Math.abs(maxP) * 0.05, 1);
+    minP = minP - span*0.12; maxP = maxP + span*0.12;
+    var vRange = maxP - minP;
+    var axisDec = vRange >= 10 ? 0 : (vRange >= 1 ? 1 : 2);
+    function Yf(p){ return padT + (H-padT-padB) * (1 - (p-minP)/(maxP-minP)); }
+
+    var grid = '';
+    for(var i=0;i<=4;i++){
+      var pv = minP + (maxP-minP)*i/4, yy = Yf(pv);
+      grid += '<line x1="'+padL+'" y1="'+yy.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+yy.toFixed(1)+'" stroke="#eef0f3"/>'
+           +  '<text x="'+(padL-6)+'" y="'+(yy+4).toFixed(1)+'" text-anchor="end" font-size="10" fill="#8a9099">'
+           +  pv.toFixed(axisDec) + '</text>';
+    }
+    // X 轴：整周 7 天全画（含还没到的日子），今天用橙色标出来
+    var xl = '';
+    days.forEach(function(d, i){
+      var lx = Xf(i), isT = (d.date === tw.today);
+      var c1 = isT ? '#d46b08' : '#8a9099', c2 = isT ? '#d46b08' : '#b0b6bf';
+      xl += '<text x="'+lx.toFixed(1)+'" y="'+(H-padB+15)+'" text-anchor="middle" font-size="10" fill="'+c1+'"'
+         +  (isT ? ' font-weight="600"' : '') + '>' + esc(d.label) + '</text>'
+         +  '<text x="'+lx.toFixed(1)+'" y="'+(H-padB+27)+'" text-anchor="middle" font-size="9" fill="'+c2+'">'
+         +  esc(d.md) + (isT ? ' 今天' : '') + '</text>';
+    });
+
+    var d = '', first = true, dots = '', bars = '';
+    pts.forEach(function(p){
+      var xi = xIdx[p.date];
+      if(xi == null) return;                 // 不在本周的点不画（防串周）
+      var x = Xf(xi), isT = (p.date === tw.today);
+      if(p.min != null && p.max != null && p.max > p.min){
+        bars += '<line x1="'+x.toFixed(1)+'" y1="'+Yf(p.max).toFixed(1)+'" x2="'+x.toFixed(1)
+             +  '" y2="'+Yf(p.min).toFixed(1)+'" stroke="'+color+'" stroke-width="7" opacity="0.16"'
+             +  ' stroke-linecap="round"/>';
+      }
+      d += (first ? 'M' : ' L') + x.toFixed(1) + ' ' + Yf(p.price).toFixed(1);
+      first = false;
+      // 非当天不要留空括号（曾输出成「2026-09-15（）¥247」）
+      var ttl = esc(p.date + (isT ? '（今天）' : '') + ' ¥' + p.price
+              + '｜当日 ' + p.n + ' 轮，最后一轮 ' + hhmm(p.last_at || '')
+              + '，区间 ¥' + p.min + '–' + p.max);
+      dots += '<circle cx="'+x.toFixed(1)+'" cy="'+Yf(p.price).toFixed(1)+'" r="'+(isT?3.8:3)
+           +  '" fill="'+(isT ? '#fff' : color)+'" stroke="'+color+'" stroke-width="'+(isT?2.2:0)+'">'
+           +  '<title>' + ttl + '</title></circle>';
+    });
+    var svg = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto"><g>' + grid + xl + '</g>'
+            + bars
+            + (d && pts.length >= 2
+               ? '<path d="'+d+'" fill="none" stroke="'+color+'" stroke-width="'+(cur?2.4:2)
+                 + '" stroke-linejoin="round" stroke-linecap="round" opacity="'+(cur?1:0.9)+'"/>'
+               : '')
+            + dots + '</svg>';
+
+    // 头部：店名 + 最新一天的价 + 本周已有几天数据；只有 1 天时标橙并说明画不出线
+    var last = pts[pts.length-1];
+    var thin = pts.length < 2;
+    if(thin) tipWarn = true;
+    var nTip = thin
+      ? tip('本周目前只有 <b>' + pts.length + ' 天</b>有采集数据，一个点画不出走势。<br>'
+          + '采集由 Windows 计划任务 HotelPriceMonitor 每天自动跑，再积累几天即可成线。', 'right warn')
+      : '';
+    var head = '<div class="trend-head">'
+      + '<span class="tn">' + esc(s.name) + '</span>'
+      + '<span class="tp">' + (last ? '¥' + last.price : '—')
+      + '<small' + (thin ? ' style="color:#d46b08"' : '') + '>本周 ' + pts.length + '/' + n + ' 天</small>'
+      + nTip + '</span></div>';
+
+    return '<div class="trend-cell' + (cur ? ' cur' : '') + '" onclick="selHotel(' + s.idx + ')"'
+         + ' title="点击切换到该酒店">' + head + svg + '</div>';
+  }).join('');
+
+  // 图例：整块只挂一次（不随酒店重复），把「连线/竖条/空心点」讲清楚
+  var legend = '<div class="trend-legend">'
+    + '<span><i class="lg-line"></i>当日最后一条采集价（连线）</span>'
+    + '<span><i class="lg-bar"></i>当日波动区间：当天所有轮次的最低 ~ 最高</span>'
+    + '<span><i class="lg-ring"></i>今天</span>'
+    + '</div>';
+  if(tipEl) tipEl.innerHTML = tip(tips.join('<br><br>'), tipWarn ? 'warn' : '');
+  el.innerHTML = '<div class="trend-grid">' + cells + '</div>' + legend;
+}
+
+/* ---------- 图形化房态：总房态 + 每房型 ---------- */
+function drawRoom(){
+  var el = document.getElementById('roomWrap');
+  var h = currentHotel();
+  var hid = h.id;
+  var room = DATA.room_by_hotel[hid] || null;
+  // PMS 房量（自家真实剩余间数）已按用户要求移出本面板（2026-09-14）：
+  // 只删前端展示，后端 pms_by_hotel 仍在 /api/data 下发，--pms 录入通道照常可用。
+  // 备份与恢复步骤见 hotel_monitor/_removed_pms_banner.txt
+  var lo = DATA.leftover_by_hotel ? DATA.leftover_by_hotel[hid] : null;
+  // 有实测、但实测的是别的入住日 —— 不能当成当前所选日期的数据展示
+  var loStale = DATA.leftover_stale_by_hotel ? DATA.leftover_stale_by_hotel[hid] : null;
+  var hasTypes = !!(room && room.room_types && room.room_types.length);
+
+  // 面板级口径说明 + 满房多平台一致性判定，统一收进标题旁的 ⓘ。
+  // 注意：标题必须在这里（早退分支之前）设置，否则「暂无房态数据」时标题会丢掉店名。
+  var fc = DATA.full_consistency[hid];
+  var rtips = ['总房态 + 每房型明细。<br>携程只公开「仅剩N间」信号，无标签表示余量充足'
+             + '（按下限 ≥' + ((lo && lo.open_min) || 6) + ' 间计），<b>不代表真实库存</b>。'];
+  var rWarn = false;
+  if(fc){
+    var cFull = fc.consensus_full;
+    rtips.push('<b>' + fc.full_platforms + '/' + fc.total_platforms + ' 个平台报满</b><br>'
+      + (cFull ? '超过半数，判定为高度可能满房。' : '仅少数平台报满，可能并未真满（各平台库存相互独立）。'));
+    if(!cFull) rWarn = true;
+  }
+  document.getElementById('roomTitle').innerHTML =
+    h.name + ' · 房态监控' + tip(rtips.join('<br><br>'), rWarn ? 'warn' : '');
+
+  // 原判据为 !hasTypes && !pms && !lo && !loStale。
+  // PMS 横幅移除后，只有 PMS 数据可展示的酒店已经没有任何内容可画，
+  // 故不再把 pms 计入「面板非空」条件 —— 否则会渲染出一个只有标题的空面板。
+  if(!hasTypes && !lo && !loStale){
+    el.innerHTML = '<div class="empty">暂无房态数据</div>';
+    return;
+  }
+
+  var html = '';
+  // 日期不符的醒目提示：大字留给「结论」，细节（最近实测日期）收进 ⓘ
+  if(loStale){
+    html += '<div class="room-total" style="background:#fff7e6;border:0.5px solid #ffd591">' +
+      '<span class="big" style="color:#d46b08;font-size:16px">本入住日未实测</span>' +
+      '<span style="font-size:13px;color:#ad6800">所选入住日 <b>' + esc(DATA.check_in_date || '—') +
+      '</b> 无房态数据' +
+      tip('最近一次实测为入住 <b>' + esc(loStale.check_in || '?') + '</b>（' + esc(loStale.updated_at || '?') +
+        '）。<br>两者不可混用，故下方不展示其房型明细 —— 避免把别的日期的房态当成本入住日结果。', 'warn') +
+      '</span></div>';
+  }
+  // 原「PMS 录入真实房量」蓝色横幅已按用户要求移出本面板（2026-09-14）。
+  // 数据链路一律保留：pms_by_hotel 仍在 /api/data 下发，pms.py 与 --pms 录入、
+  // daily.py 的 pms_rooms_left / pms_occupancy 快照都未改动 —— 只是不再显示。
+  // 完整前端代码与恢复步骤备份在 hotel_monitor/_removed_pms_banner.txt。
+
+  // 携程「仅剩N间」实测信号：无标签=余量充足（不是 0），非真实库存
+  if(lo && lo.rooms && lo.rooms.length){
+    // 售卖限制提示（如「当日入住需2晚起订」）——区别于真的满房
+    if(lo.no_room_tip){
+      html += '<div class="room-total" style="background:#fff7e6;border:0.5px solid #ffd591">' +
+        '<span class="big" style="color:#d46b08;font-size:18px">售卖限制</span>' +
+        '<span style="font-size:13px;color:#d46b08">' + esc(lo.no_room_tip) + '</span></div>';
+    }
+    var loHead = '携程房态实测 · 仅剩N间'
+      + tip('有「仅剩N间」标签的按 N 计；<b>无标签表示余量充足</b>，按下限 ≥' + (lo.open_min || 6)
+          + ' 间计（不是 0）。<br>携程不公开真实库存，此列是下限估计。'
+          + '<br><br>右侧价格为<b>携程登录态实测的房型最低价</b>：同一房型常有 2~4 个价格计划'
+          + '（到店付 / 在线付 / 含早 / 不含早），此处取其中<b>最低</b>的一个，'
+          + '即该房型当晚的展示起价。价格需登录态才可得，登录失效时会显示为 —。', 'right');
+    if(lo.from_history){
+      // 这份数据来自该入住日的**历史快照**，不是最新一轮采集。必须显式标出，
+      // 否则用户会把「几天前某次观测」当成「刚刚查到的实时房态」。
+      loHead += '<span style="color:#8a9099;font-size:12px">　历史快照 '
+        + esc(lo.updated_at || '') + '（非最新一轮）</span>';
+    }
+    if(lo.price_from){
+      loHead += '<span style="color:#d4380d;font-weight:600">　实时起价 ' +
+        esc(lo.currency || '¥') + lo.price_from + '</span>';
+    }
+    // 登录态失效提示：房型价格需携程登录态才可得，全是 None 基本就是 Cookie 过期了。
+    // 不提示的话用户只会看到一列「—」，不知道要重新扫码（严重悄然失效）。
+    if((DATA.price_missing || []).indexOf(hid) >= 0){
+      html += '<div class="room-total" style="background:#fff1f0;border:0.5px solid #ffa39e">'
+        + '<span class="big" style="color:#cf1322;font-size:18px">登录态可能已失效</span>'
+        + '<span style="font-size:13px;color:#cf1322">'
+        + '房型价格全部为空 —— 需重跑 <code>login_capture.py</code> 扫码；'
+        + '房态「仅剩N间」不依赖登录，仍可正常查看。</span></div>';
+    }
+    // 房型行渲染：三态配色 不可订=灰 / 仅剩N间=橙 / ≥6间（无标签，按下限计）=绿
+    // 价格列：来自携程登录态实测的房型最低价（同一房型多个价格计划取最低）。
+    // 拿不到价格时显示 —，绝不显示 ¥0（访客态/登录态失效时价格为 null）。
+    //
+    // 三列排布：房型名(132) / 余量(180) / 价格(70)。
+    // 余量列**不再用 flex:1** —— 那会把价格顶到面板最右缘，与内容隔着一大片空白。
+    // 改为固定宽度 + 在价格列上挂 margin-right:auto，让右侧剩余空间被自动外边距吸收，
+    // 三列紧凑左聚；同时 .room-row 仍是整行宽度，分隔线保持通长。
+    var curSym = lo.currency || '¥';
+    function roomRow(r){
+      var tag = r.leftover_display, color;
+      if(!tag){
+        if(r.status === 'closed'){ tag = '不可订'; }
+        else if(r.leftover !== null && r.leftover !== undefined){ tag = '仅剩 ' + r.leftover + ' 间'; }
+        else { tag = '有房'; }
+      }
+      if(r.status === 'closed'){ color = '#8a9099'; }
+      else if(r.leftover !== null && r.leftover !== undefined){ color = '#d46b08'; }
+      else { color = '#389e0d'; }
+      var hasPr = (r.price !== null && r.price !== undefined && r.price !== '');
+      // margin-right:auto 吸收行内剩余宽度 → 价格紧跟余量列，不贴面板右缘
+      var prSpan = hasPr
+        ? '<span class="pr" style="color:#1f2329;font-weight:600;margin-right:auto">'
+          + esc(curSym) + esc(String(r.price)) + '</span>'
+        : '<span class="pr" style="color:#c9cdd3;margin-right:auto">—</span>';
+      return '<div class="room-row">' +
+        // title 兜住被省略号截断的长房型名（esc 只处理 & < >，属性里还要补转义引号）
+        '<span class="rn" title="' + esc(r.name).replace(/"/g, '&quot;') + '">' +
+        esc(r.name) + '</span>' +
+        '<span class="nums" style="width:180px;text-align:left;color:' + color +
+        ';font-weight:500;font-size:13px">' + esc(tag) + '</span>' +
+        prSpan +
+        '</div>';
+    }
+    // 过夜房型主列表；钟点房（「连住N小时」）另起一段，不计入过夜库存统计
+    var loRows = (lo.overnight_rooms || lo.rooms).map(roomRow).join('');
+    var hourlyRows = (lo.hourly_rooms || []).map(roomRow).join('');
+    html += '<div style="margin:12px 0 4px;font-size:13px;color:#1f2329;font-weight:500">' +
+      loHead +
+      '<span style="font-weight:400;color:#8a9099;font-size:12px">　' + esc(lo.updated_at) +
+      (lo.check_in ? ' · 入住 ' + esc(lo.check_in) : '') + '</span></div>' +
+      '<div>' + loRows + '</div>';
+    if(hourlyRows){
+      html += '<div style="margin:10px 0 4px;font-size:12px;color:#5a6069;font-weight:500">' +
+        '钟点房' +
+        tip('按小时售卖（房型名带「连住N小时」），<b>不属过夜库存</b>，'
+          + '未计入上方「可订房型 / 可见房间数」。<br>右侧价格是该钟点房产品的总价，'
+          + '<b>不是过夜房价</b>，不可与上方过夜房型价格直接比较。') +
+        '<span style="font-weight:400;color:#8a9099">　共 ' + (lo.hourly_type_count || 0) +
+        ' 个</span></div>' +
+        '<div style="opacity:.75">' + hourlyRows + '</div>';
+    }
+  }
+
+  if(hasTypes){
+    var total = room.total, booked = room.booked;
+    var pct = total ? Math.round(booked/total*100) : 0;
+    var fullCls = room.is_full ? 'full' : 'booked';
+
+    if(room.status_known === false){
+      // 房态明细不可得：明确标注而非显示「已订 0」（房型结构来自人工核实锚点）
+      html += '<div class="room-total" style="background:#fffbe6;border:0.5px solid #ffe58f">' +
+        '<span class="big" style="color:#854f0b">房态明细未获取</span>' +
+        '<span style="font-size:13px;color:#854f0b">已确认房型 <b>' + room.room_types.length + '</b> 个' +
+        tip('携程仅公开「仅剩N间」信号，不提供已订数。<br>'
+          + '此处房型结构来自人工核实锚点，故「已订」显示为未获取，而不是 0。', 'warn') +
+        '</span></div>';
+      html += '<div>' + room.room_types.map(function(rt){
+        return '<div class="room-row">' +
+          '<span class="rn">' + esc(rt.name) + '</span>' +
+          '<span class="nums" style="color:#8a9099">' + rt.total + ' 间 · 已订未获取</span>' +
+          '<span class="pr">' + (rt.price ? '¥' + rt.price : '—') + '</span>' +
+          '</div>';
+      }).join('') + '</div>';
+    } else {
+      html += '<div class="room-total">' +
+        '<span class="big ' + (room.is_full ? 'full' : 'open') + '">' + (room.is_full ? '满房' : '有房') + '</span>' +
+        '<div class="bar-wrap"><div class="bar-fill ' + fullCls + '" style="width:' + pct + '%"></div></div>' +
+        '<span style="font-size:13px;color:#5a6069">已订 <b>' + booked + '</b> / 总 <b>' + total + '</b> 间（' + pct + '%）</span>' +
+        '</div>';
+      html += '<div>' + room.room_types.map(function(rt){
+        var rtPct = rt.total ? Math.round(rt.booked/rt.total*100) : 0;
+        var fullc = rt.booked >= rt.total;
+        return '<div class="room-row">' +
+          '<span class="rn">' + esc(rt.name) + '</span>' +
+          '<div class="bar"><div class="f' + (fullc ? ' fullc' : '') + '" style="width:' + rtPct + '%"></div></div>' +
+          '<span class="nums">' + (fullc ? '<b style="color:#d4380d">满</b> ' : '') + rt.booked + '/' + rt.total + ' 间</span>' +
+          '<span class="pr">¥' + rt.price + '</span>' +
+          '</div>';
+      }).join('') + '</div>';
+    }
+  }
+
+  el.innerHTML = html;
+}
+
+/* ---------- 各平台评分监控：前端已移除（2026-09-14，按用户要求）----------
+   面板 HTML、starsHtml()、scoreTrendHtml()、drawRating() 全部删除。
+   完整前端代码（HTML+CSS+JS）与恢复步骤备份在 hotel_monitor/_removed_rating_panel.txt。
+   后端数据层保留：rating_by_hotel_platform / score_series / score_platforms 仍在
+   /api/data 下发，delta 环比与 alert 掉分预警的计算逻辑未动，恢复时无需改后端。 */
+
+/* ---------- 满房状态总表 ---------- */
+function drawStatus(){
+  var rows = DATA.full_rooms.map(function(f){
+    // 状态：房态未实测优先（不能把别的日期的实测当成本日期结果），
+    // 其次售卖限制，再看满房/有房。说明一律挂 hover，表格里不放常驻解释文字。
+    var stTxt, stCls;
+    if(f.room_stale){
+      stTxt = '<span class="src-tag" style="color:#8a9099;font-weight:500;padding:0">未实测'
+            + '<span class="tipbox">该入住日无房态实测数据。<br>最近一次实测为入住 <b>'
+            + esc(f.room_stale_check_in || '?') + '</b>（' + esc(f.room_stale_updated || '?')
+            + '）。<br>两者不可混用，故此处不显示房态结果。</span></span>';
+      stCls = '';
+    }
+    else if(f.no_room_tip){
+      stTxt = '<span class="src-tag" style="color:#d46b08;font-weight:500;padding:0">有售卖限制'
+            + '<span class="tipbox">可订但受限：<b>' + esc(f.no_room_tip) + '</b><br>'
+            + '与真满房区分 —— 满房是没房可卖，这里是能卖但有条件。</span></span>';
+      stCls = '';
+    }
+    else if(f.is_full){ stTxt = '满房'; stCls = 'class="full"'; }
+    else { stTxt = '有房'; stCls = 'class="open"'; }
+    var roomsCell = f.total_rooms ? f.total_rooms + ' 间' : '—';
+    // 可订房型/房型数均为过夜口径；钟点房另标注，不并入分子分母
+    var typesCell = (f.bookable_type_count != null && f.room_type_count)
+      ? f.bookable_type_count+' / '+f.room_type_count
+      : '—';
+    if(f.hourly_type_count){
+      typesCell += ' <span class="src-tag" style="color:#8a9099;font-size:11px;padding:0">+'
+                 + f.hourly_type_count + ' 钟点房'
+                 + '<span class="tipbox">钟点房（房型名带「连住N小时」）按小时售卖，'
+                 + '<b>不属过夜库存</b>，未计入左侧比值。</span></span>';
+    }
+    // 可见房间数（下限）：有「仅剩N间」按 N 计，无标签按 ≥6 间计；全不可订时显示不可订
+    var leftCell;
+    if(f.visible_rooms_min == null || f.visible_rooms_min === undefined) leftCell = '—';
+    else if(f.visible_rooms_min <= 0) leftCell = '不可订';
+    else leftCell = '<b>≥'+f.visible_rooms_min+'</b> 间';
+    // 主体酒店整行高亮（供 CSS 定位）；对比酒店保持白底
+    return '<tr' + (f.is_target ? ' class="tgt"' : '') + '>'
+      + '<td>'+esc(f.hotel)+'</td><td>'+esc(f.city)+'</td>'+
+      '<td>'+(f.is_target?'<span class="tag t">主体</span>':'<span class="tag c">对比</span>')+'</td>'+
+      '<td>'+cn(f.platform)+'</td>'+
+      '<td>'+(f.price ? '¥'+f.price : '—')+'</td>'+
+      '<td>'+roomsCell+'</td>'+
+      '<td>'+typesCell+'</td>'+
+      '<td>'+leftCell+'</td>'+
+      '<td '+stCls+'>'+stTxt+'</td>'+
+      '<td>'+(f.updated_at ? fmtTime(f.updated_at) : fmtTime(f.collected_at))+'</td></tr>';
+  }).join('');
+  document.querySelector('#status tbody').innerHTML = rows;
+}
+
+/* 同步入住日期下拉：选项来自服务端「已有数据日期」，首屏也要有，故放在 render 里 */
+function syncDatePick(){
+  var sel = document.getElementById('datePick');
+  if(!sel) return;
+  var cur = DATA.check_in_date || DATA.auto_check_in_date || '';
+  var dates = (DATA.available_check_in_dates || []).slice();
+  if(cur && dates.indexOf(cur) < 0) dates.push(cur);
+  dates.sort();
+  var sig = dates.join('|');
+  if(sel._sig !== sig){
+    sel.innerHTML = '';
+    dates.forEach(function(d){
+      var o = document.createElement('option');
+      o.value = d; o.textContent = d;
+      sel.appendChild(o);
+    });
+    sel._sig = sig;
+  }
+  if(cur) sel.value = cur;
+}
+
+/* 本地当天 YYYY-MM-DD：用于判定活动是否已结束。放前端算，
+   静态分享快照导出后日期仍随浏览当天滚动，不会随时间失真。 */
+function todayISO(){
+  var d = new Date();
+  var m = d.getMonth() + 1, day = d.getDate();
+  return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day;
+}
+/* 本地日期加 n 天（YYYY-MM-DD）。用于「近 N 天」窗口右边界，同样放前端算。 */
+function isoAddDays(iso, n){
+  var p = String(iso).split('-');
+  var d = new Date(+p[0], +p[1] - 1, +p[2]);
+  d.setDate(d.getDate() + n);
+  var m = d.getMonth() + 1, dd = d.getDate();
+  return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (dd < 10 ? '0' : '') + dd;
+}
+
+/* ---------- 周边热点事项：仅主体酒店展示 ---------- */
+/* ---------- 出租率上界 与 预估营业额 ----------
+   数据源：DATA.sellout_by_hotel[hid] —— 后端从**今日**每日快照（data/daily/YYYY-MM-DD.json）
+   抽出的「逐房型余量变化点 + 售完/关房/余量增减事件 + 出租率上界 + 营业额量级」。
+
+   演进（同一块面板，2026-09-16 一天内两改，都是用户明确要求）：
+     ① 原为**阶跃线时间轴图** ⇒ 用户「不美观且图标混乱，取消图表，只展示数据，
+        增加一个预估营业额」⇒ 换成 KPI + 元信息行 + 口径行 + 房型数据表 + 今日事件；
+     ② 接着用户圈掉明细整块「这部分数据不需要，页面上移除」⇒ 现在**只剩 KPI 卡**。
+   去掉的明细代码（CSS + JS，含房型表/事件列表）原样备份在
+   `hotel_monitor/_removed_sellout_detail.txt`，含四步恢复说明。**后端 payload 一行未动**
+   （rooms / events / adr_* / snap_count 照旧下发），所以「售完 vs 关房」判定逻辑与
+   `check_sellout_backend.py`（121 项数据层不变量）都还完整 —— 只是不再有 UI 展示。
+   ⇒ 别看到前端没用就把后端 `_sellout_by_hotel` 里的字段删了，那等于把判定逻辑一起废掉。
+
+   ⓘ 三条口径红线（与页面显示范围同步，删了明细就不再提明细里的事）：
+     1) 携程 C 端**没有销量字段** ⇒ 已售只能给上界（总房量 − 可订房型剩余下限之和）；
+     2) 日营业额只能给**量级区间**（已售上界 × 挂价代理），挂价不是成交价；
+     3) 只统计过夜房型，钟点房不属过夜库存、不计入。 */
+function drawSellout(){
+  var el = document.getElementById('soWrap');
+  var titleEl = document.getElementById('soTitle');
+  if(!el || !titleEl) return;
+  var h = currentHotel();
+  var s = (DATA.sellout_by_hotel || {})[h.id] || null;
+  var openMin = (s && s.open_min) || 6;
+
+  var tips = [
+    '<b>本面板所有数字都是上界或区间，不是实测销量。</b>',
+    '携程 C 端<b>不提供任何销量字段</b>：实测递归扫过房型接口里 199 个含 '
+      + 'count / sale / sold / order / qty / stock / left 的 key，命中项全是下单参数'
+      + '（roomQuantity=1 之类）、固定值 0 或空数组。余量只有「仅剩N间」(N≤5) 一个信号，'
+      + '无标签只代表 <b>≥' + openMin + ' 间</b>（只知下限，不是真实库存）。',
+    '<b>已售上界</b> = 总房量 − Σ(可订房型剩余下限)。它的实际含义是「已售 + 停售/关房」，'
+      + '作为销量<b>上界</b>依然成立，但不等于真实销量。',
+    '<b>预估日营业额只能给量级区间</b>：分子 = 已售上界（无销量字段，见上）；'
+      + '分母用两个可追溯的<b>挂价</b>代理 —— 下代理 = 当日最便宜在售房型挂价，'
+      + '上代理 = 当日各过夜房型挂价的简单平均。挂价<b>不是成交价</b>（促销/连住/会员价都会更低），'
+      + '也未按房量加权 ⇒ <b>只能做竞品之间的横向对比</b>，绝对值不可当财务口径。'
+      + '自家店的 PMS 出租率与人工营收表才准（前者需每日前台报数，本面板不展示）。',
+    '<b>只统计过夜房型</b>：钟点房不属过夜库存，不计入总房量与剩余下限。',
+    '数据只含<b>今天</b>：每天房态从头开始卖，跨天比较余量没有意义。'
+  ];
+  titleEl.innerHTML = h.name + ' · 出租率上界与预估营业额' + tip(tips.join('<br><br>'));
+
+  // ⚠️ 早退判据随「删明细」同步收紧为 !s：明细没了以后面板只吃 s 自己的标量
+  //    （total / visible_min / sold_hi / occ_hi / rev_* —— 不含 pms_*，那张卡已撤）。
+  //    再拿 s.rooms.length 当门槛，会出现「KPI 明明有数据却整块显示暂无快照」的假故障。
+  if(!s){
+    el.innerHTML = '<div class="empty">今日暂无房态快照</div>';
+    return;
+  }
+
+  /* 千分位。价格只有三位数用不上，营业额是四~五位数，不分组读不出来。
+     显式指定 en-US 而不用裸 toLocaleString()：后者随浏览器 locale 变，
+     同一份数据在不同机器上会显示成 "6.608" 或 "6 608"，对不上就没法对账。 */
+  function money(v){ return Number(Math.round(v)).toLocaleString('en-US'); }
+
+  // ---- KPI ----
+  function k(v, l, cls){
+    return '<div class="k' + (cls ? ' ' + cls : '') + '"><div class="v">' + v + '</div>'
+         + '<div class="l">' + l + '</div></div>';
+  }
+  var kpi = '<div class="so-kpi">';
+  kpi += k(s.total ? (s.total + '<span style="font-size:12px"> 间</span>') : '未核实', '总房量');
+  kpi += k('≥ ' + (s.visible_min == null ? '—' : s.visible_min) + '<span style="font-size:12px"> 间</span>',
+           '可订房型剩余下限之和');
+  kpi += k('≤ ' + (s.sold_hi == null ? '—' : s.sold_hi) + '<span style="font-size:12px"> 间</span>',
+           '已售上界', 'hi');
+  kpi += k(s.occ_hi == null ? '—' : ('≤ ' + s.occ_hi + '%'), '出租率上界', 'hi');
+  // 预估日营业额：区间两端都源自「已售上界」，只是换了个挂价代理，故整体是上界区间
+  if(s.rev_hi == null){
+    kpi += k('—', '预估日营业额', 'rev');
+  } else {
+    var rvTxt = (s.rev_lo != null && s.rev_lo !== s.rev_hi)
+              ? ('¥' + money(s.rev_lo) + '~' + money(s.rev_hi))
+              : ('¥' + money(s.rev_hi));
+    kpi += k(rvTxt, '预估日营业额（量级区间）', 'rev');
+  }
+  // 「PMS 实测出租率」卡已于 2026-09-16 撤下：它是 2026-09-13 21:59 手工录入的陈旧值，
+  // 却被当成「今日实测」跟当天实时数据并排展示，界面无任何时间戳 ⇒ 会误导。
+  // **后端一行动都没动**：pms_by_hotel / --pms 录入通道 / daily.py 快照的
+  // pms_rooms_left / pms_occupancy / pms_updated_at 全部照旧下发，
+  // sellout_by_hotel 里的 pms_occ / pms_left 也仍在 payload 中（只是不渲染）。
+  // 恢复一行即可，代码与理由备份在 hotel_monitor/_removed_pms_card.txt。
+  kpi += '</div>';
+
+  el.innerHTML = kpi;
+}
+
+function drawEvents(){
+  var el = document.getElementById('eventsWrap');
+  var titleEl = document.getElementById('eventsTitle');
+  var h = currentHotel();
+  var hid = h.id;
+  var meta = DATA.events_meta || {};
+  // 时间窗口：只留「今天起 window_days 天内仍有交集」的活动（默认 30 天）。
+  // 窗口在前端算 —— 静态快照导出后仍随浏览当天滚动，不会随时间失真。
+  // 数据不裁剪：窗口外的条目仍在 events.py 里，调大 window_days 即可重新出现。
+  var t = todayISO();
+  var wd = (typeof meta.window_days === 'number' && meta.window_days > 0) ? meta.window_days : 30;
+  var end = isoAddDays(t, wd);
+  var all = (DATA.events_by_hotel && DATA.events_by_hotel[hid]) || [];
+  var evs = all.filter(function(e){
+    return (e.date_end || e.date) >= t && e.date <= end;
+  });
+  var nPast = 0, nFar = 0;
+  all.forEach(function(e){
+    if((e.date_end || e.date) < t) nPast++;
+    else if(e.date > end) nFar++;
+  });
+  var tipHtml = '数据整理更新于 <b>' + esc(meta.as_of || '?') + '</b>。<br>'
+    + '仅列<b>酒店所在区域（同区 / 紧邻）</b>的活动 —— 跨区域的城市级活动不计入。<br>'
+    + '时间窗口：<b>今天起 ' + wd + ' 天内</b>（含进行中的跨期活动）。';
+  if(all.length > evs.length){
+    tipHtml += '<br>另有 <b>' + (all.length - evs.length) + '</b> 项不在窗口内已隐藏'
+      + '（已结束 ' + nPast + ' · ' + wd + ' 天后 ' + nFar + '）。';
+  }
+  tipHtml += '<br>' + esc(meta.note || '') + '<br>每条可点「↗核验」查看来源。';
+  titleEl.innerHTML = '周边热点事项' + tip(tipHtml, 'right');
+  // 仅主体酒店提供；对比组酒店不展示
+  if(!h.is_target){
+    el.innerHTML = '<div class="empty">周边热点仅对监控主体酒店提供</div>';
+    return;
+  }
+  if(!all.length){
+    el.innerHTML = '<div class="empty">暂无周边热点数据</div>';
+    return;
+  }
+  if(!evs.length){
+    el.innerHTML = '<div class="empty">近 ' + wd + ' 天内暂无周边活动'
+      + '（另 ' + all.length + ' 项在窗口外，已隐藏）</div>';
+    return;
+  }
+  // 进行中 = 今天已开始且未结束（窗口已保证未结束，故只要起始日 ≤ 今天）
+  var up = evs.filter(function(e){ return e.date <= t; }).length;
+  titleEl.innerHTML += '<span class="ev-count">近 ' + wd + ' 天 ' + evs.length + ' 项 · 进行中 '
+    + up + ' 项</span>';
+  // 类别固定顺序，保证演唱会/会展/赛事/开学/雅思分组稳定
+  var order = ['演出','赛事','文旅活动','展览','景区','开学','其他'];
+  var groups = {};
+  evs.forEach(function(e){ (groups[e.category] = groups[e.category] || []).push(e); });
+  var html = '';
+  order.forEach(function(cat){
+    if(!groups[cat]) return;
+    // 组内按起始日升序（窗口内已无已结束项，故「最早开始/最早到期」在前）
+    groups[cat].sort(function(a, b){ return String(a.date).localeCompare(String(b.date)); });
+    var nLive = groups[cat].filter(function(e){ return e.date <= t; }).length;
+    html += '<div class="ev-group"><h3>' + esc(cat) + '（' + groups[cat].length
+         + (nLive ? ' · 进行中 ' + nLive : '') + '）</h3><ul class="ev-list">';
+    groups[cat].forEach(function(e){
+      // 已结束项已被时间窗口滤掉，故 past 恒 false（保留分支，便于日后改成含历史的窗口）
+      var past = (e.date_end || e.date) < t;
+      var live = e.date <= t;         // 今天已开始且未结束 = 进行中
+      // 距酒店最近的两类区域标绿（near），其余标灰（far）
+      var near = (e.near === true);   // 距酒店 ≤5km 标绿
+      var region = e.region ? '<span class="ev-region ' + (near ? 'near' : 'far') + '">'
+        + esc(e.region) + (typeof e.distance_km === 'number' ? ' · 约' + e.distance_km + 'km' : '')
+        + '</span>' : '';
+      var flag = live ? '<span class="ev-live">进行中</span>'
+               : (past ? '<span class="ev-past">已结束</span>' : '');
+      var rnote = e.region_note ? ' <span class="ev-rnote">' + esc(e.region_note) + '</span>' : '';
+      var loc = e.location ? '<span class="ev-loc">' + esc(e.location) + '</span>' : '';
+      var src = e.source ? '来源：' + esc(e.source) : '';
+      var link = e.source_url ? ' <a href="' + esc(e.source_url) + '" target="_blank" rel="noopener">↗核验</a>' : '';
+      html += '<li class="' + (past ? 'is-past' : '') + '"><span class="ev-date">' + esc(e.date_text)
+        + '</span><span class="ev-title">' + esc(e.title) + '</span>' + flag + region + rnote
+        + loc + '<span class="ev-src">' + src + link + '</span></li>';
+    });
+    html += '</ul></div>';
+  });
+  el.innerHTML = html;
+}
+
+function render(){
+  syncDatePick();
+  document.getElementById('meta').textContent = '更新于 ' + DATA.generated_at;
+  // 数据源模式直接给中文，别把内部的 live / demo 原样丢到页面上
+  document.getElementById('src').textContent =
+    DATA.data_source === 'live' ? '携程实测' : (DATA.data_source === 'demo' ? '演示数据' : DATA.data_source);
+  document.getElementById('ar').textContent = DATA.auto_refresh_min;
+  // 注：自动切换秒数已移入「选择酒店」旁的悬停提示，footer 里不再有 #as 节点
+  var hi = currentHotel();
+  document.getElementById('switchHint').textContent = '当前：' + hi.name;
+  drawSwitcher(); drawCards(); drawTrend(); drawRoom(); drawSellout(); drawStatus(); drawEvents(); drawSrcLine();
+}
+
+/* 加密分享：Web Crypto 解密（PBKDF2 100k / SHA-256 / AES-GCM 256）
+   仅当 public_data.json 是密文时触发；本地看板与未加密分享是明文 JSON，走另一分支。 */
+let sessionPass = null;   // 本次页面会话已验证的密码，自动刷新时免重复输入
+/* 手机端痛点：浏览器回收后台标签页会连内存里的密码一起清掉 -> 每次打开都要重输。
+   故提供「记住密码」：写入本机 localStorage（30 天），刷新 / 重开浏览器都免输入。
+   取舍：这是「便利 <-> 本机安全」的交换，密码会留在这台设备的浏览器里（共用设备勿勾选）；
+   服务端换密码后，本机旧密码解不开新密文 -> 自动清除并要求重输，不会卡死。 */
+const PASS_STORE_KEY = 'hotel_view_pass_v1';   // 本机记住的密码
+const PASS_PREF_KEY  = 'hotel_view_rem_off';   // 勾选偏好（'1' = 用户主动取消过勾选）
+const PASS_KEEP_DAYS = 30;
+let lastRemember = true;   // 本次弹窗「记住密码」的勾选状态
+function loadSavedPass(){
+  try {
+    const raw = localStorage.getItem(PASS_STORE_KEY);
+    if (!raw) return '';
+    const o = JSON.parse(raw);
+    if (!o || !o.p) return '';
+    if (o.exp && Date.now() > o.exp){ localStorage.removeItem(PASS_STORE_KEY); return ''; }
+    return o.p;
+  } catch(e){ return ''; }
+}
+function savePass(p){
+  try {
+    localStorage.setItem(PASS_STORE_KEY,
+      JSON.stringify({p:p, exp: Date.now() + PASS_KEEP_DAYS * 86400000}));
+  } catch(e){}   // 隐私模式 / 存储被禁用 -> 静默降级为仅本次会话有效
+}
+function clearSavedPass(){
+  try { localStorage.removeItem(PASS_STORE_KEY); } catch(e){}
+  syncForgetBtn();
+}
+function syncForgetBtn(){
+  const w = document.getElementById('forgetWrap');
+  if (w) w.style.display = loadSavedPass() ? '' : 'none';
+}
+async function deriveKey(password, salt){
+  const enc = new TextEncoder();
+  const km = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt:salt, iterations:100000, hash:'SHA-256' },
+    km, { name:'AES-GCM', length:256 }, false, ['decrypt']);
+}
+async function aesDecrypt(b64, password){
+  const bin = atob(b64);
+  const buf = new Uint8Array(bin.length);
+  for (let i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i);
+  const salt = buf.slice(0,16), iv = buf.slice(16,28), ct = buf.slice(28);
+  const key = await deriveKey(password, salt);
+  return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM', iv:iv}, key, ct));
+}
+function promptPass(initialErr){
+  return new Promise(function(resolve){
+    const m=document.getElementById('passModal'), inp=document.getElementById('passInput'), err=document.getElementById('passErr');
+    const chk=document.getElementById('passRemember');
+    err.textContent = initialErr || '';   // 重试时保留「密码错误」提示，不清空
+    // 勾选状态沿用上次选择：默认勾选（手机端免重复输入），用户取消过则保持取消
+    if (chk){
+      try { chk.checked = (localStorage.getItem(PASS_PREF_KEY) !== '1'); }
+      catch(e){ chk.checked = true; }
+    }
+    m.style.display='flex'; inp.value='';
+    setTimeout(function(){ try{inp.focus();}catch(e){} }, 30);
+    function close(v){
+      m.style.display='none'; inp.onkeydown=null;
+      document.getElementById('passOk').onclick=null;
+      document.getElementById('passCancel').onclick=null;
+      resolve(v);
+    }
+    function submit(){
+      lastRemember = !(chk && !chk.checked);
+      if (chk){ try { localStorage.setItem(PASS_PREF_KEY, chk.checked ? '0' : '1'); } catch(e){} }
+      close(inp.value);
+    }
+    inp.onkeydown=function(e){ if(e.key==='Enter') submit(); };
+    document.getElementById('passOk').onclick=submit;
+    document.getElementById('passCancel').onclick=function(){ close(null); };
+  });
+}
+
+async function refresh(){
+  var sel = document.getElementById('datePick');
+  var url = 'public_data.json?_=' + Date.now();
+  if (sel && sel.value) url += '&check_in=' + encodeURIComponent(sel.value);
+  var txt;
+  try { txt = await (await fetch(url)).text(); } catch(e){ return; }
+  // 1) 明文 JSON：本地看板 / 未加密分享 → 直接渲染（向后兼容）
+  try { DATA = JSON.parse(txt); render(); return; } catch(e){}
+  // 2) 密文：需密码解密（Web Crypto，浏览器端，密码不过网）
+  if (!window.crypto || !crypto.subtle){
+    alert('当前环境不支持解密（需 HTTPS 或 localhost）。请用分享链接打开。');
+    return;
+  }
+  var pass = sessionPass;
+  // 1) 本机已记住密码 -> 静默试解，成功则完全不打扰（手机端免重复输入的关键路径）
+  if (!pass){
+    var saved = loadSavedPass();
+    if (saved){
+      try {
+        DATA = JSON.parse(await aesDecrypt(txt, saved));
+        sessionPass = saved; syncForgetBtn(); render(); return;
+      } catch(e){
+        clearSavedPass();   // 多半是服务端已换密码 -> 清掉旧值，落到下面正常弹窗
+      }
+    }
+  }
+  var first = true;
+  for (var i=0;i<3;i++){
+    if (!pass) pass = await promptPass(first ? '' : '密码错误，请重试');
+    if (!pass) return;                 // 用户取消
+    first = false;
+    try {
+      DATA = JSON.parse(await aesDecrypt(txt, pass));
+      sessionPass = pass;              // 本次页面会话缓存，30min 自动刷新免重复输入
+      if (lastRemember){ savePass(pass); syncForgetBtn(); }   // 勾了记住 -> 写本机 30 天
+      else { clearSavedPass(); }                              // 没勾 -> 只本次会话有效
+      render();
+      return;
+    } catch(e){
+      pass = null; sessionPass = null;  // 下一轮 promptPass 会带上「密码错误」提示
+    }
+  }
+}
+
+async function changeDate(){
+  await refresh();
+}
+
+async function runOnce(){
+  var b = document.getElementById('runBtn');
+  b.disabled = true; b.textContent = '采集中…';
+  try { /* 静态只读分享：采集按钮已禁用 */ } catch(e){}
+  await refresh();
+  b.disabled = false; b.textContent = '采集一次';
+}
+
+/* 自动切换酒店（每分钟） */
+function autoSwitch(){
+  if (!DATA || !DATA.hotels || !DATA.hotels.length) return;  // 加密分享未输密码前 DATA 为 null
+  curIdx = (curIdx + 1) % DATA.hotels.length;
+  selHotel(curIdx);
+}
+
+/* 首屏：加密分享版 __DATA__ 为 null（不烘焙明文）→ 拉密文解密；
+   本地看板 / 未加密分享 __DATA__ 已烘焙 → 直接渲染。 */
+syncForgetBtn();
+(function(){
+  var fb = document.getElementById('forgetBtn');
+  if (fb) fb.onclick = function(){
+    clearSavedPass();
+    try { alert('已清除本机保存的密码，下次打开需重新输入。'); } catch(e){}
+  };
+})();
+if (DATA == null) refresh(); else render();
+
+/* 每半小时刷新画面 + 每分钟自动切换酒店。
+   [2026-09-14] 职责分离：这里原本是 setInterval(runOnce, 30min)，
+   即页面自己也会触发一轮采集。但 runOnce 既采集又刷新，
+   与已注册的计划任务 HotelPriceMonitor（每 30 分钟，不依赖页面开着）
+   并存会变成同一半小时采两次 —— history 记录翻倍、趋势图轮次虚增。
+   现在：**计划任务负责采集，页面只负责拉最新数据刷新**；
+   想立刻采一轮请点页面上的「采集一次」。 */
+/* 加密分享版首屏 DATA 为 null：延迟用默认值兜底，避免 null.xxx 抛错中断后续脚本
+   （否则自动刷新/自动切换的 setInterval 根本不会注册）。密码输入后 DATA 就绪，
+   两路间隔即按真实值工作。refresh 内再判空，未输密码前不弹打扰。 */
+setInterval(function(){ if (DATA) refresh(); }, (DATA ? DATA.auto_refresh_min : 30) * 60 * 1000);
+setInterval(autoSwitch, (DATA ? DATA.auto_switch_sec : 60) * 1000);
+</script>
+</body></html>
